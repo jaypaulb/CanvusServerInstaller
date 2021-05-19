@@ -17,3 +17,7 @@ adjust the variable at the top of the script to suite your needs then Ctrl+O to 
 Then run the script with
 
 ./CanvusServerInstaller_JP2021.sh
+
+On completion you will need to set the external URL in the mt-canvus-server.ini file.
+
+sudo nano /etc/MultiTaction/canvus/mt-canvus-server.ini
