@@ -4,12 +4,12 @@
 #################
 
 
-psqluser="canvus"   # Database username
-psqlpass="multimulti"  # Database password
-psqldb="canvusdb"   # Database name
-canvuskey="NM65-NED4-SLTL-VAJR" # Canvus testing activation key
-canvusadmin="jaypaulb@gmail.com" # Canvus dashboard admin email
-latestcanvusinstall="http://internal-files.s3.amazonaws.com/buildbot/2021/05/14/mt-canvus-server-3.0.0-alpha2-build28285-Ubuntu-18.04-amd64.sh" #link to the latest version of the canvus server install .sh
+psqluser="CanvusDbUser"   # Database username
+psqlpass="CanvusDbPwd"  # Database password
+psqldb="CanvusDb"   # Database name
+canvuskey="1234-ABCD-9876-ZYXW" # Canvus testing activation key
+canvusadmin="admin@domain.com" # Canvus dashboard admin email
+latestcanvusinstall="http://linkgoeshere" #link to the latest version of the canvus server install .sh
 
 #################################################
 #                       #
