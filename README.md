@@ -8,7 +8,9 @@ login to the server (18.04)
 Run the below command from ~
 
 wget  'https://raw.githubusercontent.com/jaypaulb/CanvusServerInstaller/main/canvusinstall.sh' -O CanvusServerInstaller_JP2021.sh
+
 sudo chmod +x CanvusServerInstaller_JP2021.sh
+
 nano CanvusServerInstaller_JP2021.sh
 
 adjust the variable at the top of the script to suite your needs then Ctrl+O to save and Ctrl+X to exit.
