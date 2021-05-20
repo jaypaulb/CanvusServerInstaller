@@ -26,29 +26,24 @@ sudo apt-get install postgresql-10 -y
 
 
 #################
-# Database
+echo # Database
 #################
 sudo printf "CREATE USER $psqluser WITH PASSWORD '$psqlpass';\nCREATE DATABASE $psqldb WITH OWNER $psqluser;\nGRANT ALL ON DATABASE $psqldb TO $psqluser" > /tmp/jaypaul.sql
 
 sudo -u postgres psql -f /tmp/jaypaul.sql
+echo "=========================================="
+echo "Finished Database section"
 
-# sudo -u postgres psql -c "grant all on database $psqldb to $psqluser;"
-echo "Finished Database section"
-echo "Finished Database section"
-echo "Finished Database section"
-echo "Finished Database section"
-echo "Finished Database section"
-echo "Finished Database section"
-echo "Finished Database section"
 
 #################
-# Update Synch Commit
+echo # Update Synch Commit
 #################
 sudo sed -i -e 's/#synchronous_commit = on/synchronous_commit = off/g' /etc/postgresql/10/main/postgresql.conf
+echo "=========================================="
 echo "Synch Commit Set to Off"
 
 #################
-# Install Canvus, Cp example ini, update INI with DB details.
+echo # Install Canvus, Cp example ini, update INI with DB details.
 #################
 
 wget $latestcanvusinstall -O /tmp/jaypaul-canvus-install.sh
@@ -71,7 +66,7 @@ echo " SQL details added to mt-canvus-server.ini"
 
 sudo mkdir -p /etc/MultiTaction/Licenses/ && sudo cp ~/MultiTaction/Licenses/* /etc/MultiTaction/Licenses
 echo "=============License files copied to /etc/ location =================="
-echo foo | tee -a "$(tty)" | ls /etc/MultiTaction/Licenses/
+echo ls /etc/MultiTaction/Licenses/
 
 sudo systemctl start mt-canvus-server
 sudo systemctl start mt-canvus-dashboard
@@ -82,7 +77,7 @@ systemctl is-active mt-canvus-server && echo Canvus Server is running
 touch canvus_server_admin_details.txt
 sudo /opt/mt-canvus-server/bin/mt-canvus-server --create-admin $canvusadmin >> canvus_server_admin_details.txt
 echo "Admin login details are saved in canvus_server_admin_details.txt"
-echo foo | tee -a "$(tty)" | sudo /opt/mt-canvus-server/bin/mt-canvus-server --list-users
+echo sudo /opt/mt-canvus-server/bin/mt-canvus-server --list-users
 
 #################
 # Cleaning up
