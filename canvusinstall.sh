@@ -28,7 +28,7 @@ sudo apt-get install postgresql-10 -y
 #################
 # Database
 #################
-sudo printf "CREATE USER $psqluser WITH PASSWORD '$psqlpass';\nCREATE DATABASE $psqldb WITH OWNER $psqluser;\nGRANT ALL ON $psqldb TO $psqluser" > /tmp/jaypaul.sql
+sudo printf "CREATE USER $psqluser WITH PASSWORD '$psqlpass';\nCREATE DATABASE $psqldb WITH OWNER $psqluser;\nGRANT ALL ON DATABASE $psqldb TO $psqluser" > /tmp/jaypaul.sql
 
 sudo -u postgres psql -f /tmp/jaypaul.sql
 
