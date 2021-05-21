@@ -7,7 +7,7 @@ Instructions for use:
 login to the server (18.04)
 Run the below command from ~
 
-wget  'https://raw.githubusercontent.com/jaypaulb/CanvusServerInstaller/main/canvusinstall.sh' -O CanvusServerInstaller_JP2021.sh
+wget  'https://raw.githubusercontent.com/jaypaulb/CanvusServerInstaller/main/CanvusServerInstall.sh' -O CanvusServerInstaller_JP2021.sh
 
 sudo chmod +x CanvusServerInstaller_JP2021.sh
 
