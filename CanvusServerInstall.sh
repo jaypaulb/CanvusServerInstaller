@@ -8,10 +8,10 @@
 psqluser="canvus"   # Database username
 psqlpass="multimulti"  # Database password
 psqldb="canvusdb"   # Database name
-canvuskey="NM65-NED4-SLTL-VAJR" # Canvus testing activation key
-canvusadmin="jaypaulb@gmail.com" # Canvus dashboard admin email
-latestcanvusinstall="http://internal-files.s3.amazonaws.com/buildbot/2021/05/14/mt-canvus-server-3.0.0-alpha2-build28285-Ubuntu-18.04-amd64.sh" #link to the latest version of the canvus server install .sh
-domain="pyscholology.com"  #external domain name for ssl cert and server functions
+canvuskey="aaaa-bbbb-cccc-dddd" # Canvus testing activation key
+canvusadmin="admin@admin.com" # Canvus dashboard admin email
+latestcanvusinstall="https://apps.multitaction.com/download/s3/mt-canvus/packages/mt-canvus-server-2.7.6-build25999-Ubuntu-18.04-amd64.sh" #link to the latest version of the canvus server install .sh
+domain="example.com"  #external domain name for ssl cert and server functions
 
 
 
