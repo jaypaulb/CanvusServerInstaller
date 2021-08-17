@@ -10,7 +10,7 @@ psqlpass="multimulti"  # Database password
 psqldb="canvusdb"   # Database name
 canvuskey="aaaa-bbbb-cccc-dddd" # Canvus testing activation key
 canvusadmin="admin@admin.com" # Canvus dashboard admin email
-latestcanvusinstall="https://apps.multitaction.com/download/s3/mt-canvus/packages/mt-canvus-server-2.7.6-build25999-Ubuntu-18.04-amd64.sh" #link to the latest version of the canvus server install .sh
+latestcanvusinstall="https://canvus-downloads.s3.amazonaws.com/packages/mt-canvus-server-3.0.0-build28929-Ubuntu-18.04-amd64.sh" #link to the latest version of the canvus server install .sh
 domain="example.com"  #external domain name for ssl cert and server functions
 
 
