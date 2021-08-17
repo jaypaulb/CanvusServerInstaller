@@ -18,6 +18,4 @@ Then run the script with
 
 ./CanvusServerInstaller_JP2021.sh
 
-On completion you will need to set the external URL in the mt-canvus-server.ini file.
-
-sudo nano /etc/MultiTaction/canvus/mt-canvus-server.ini
+Please note that this will provide you with the admin password as plain text on completion.  Do Not Run Unsupervised.  This is the ONLY time the admin password will be presented.
