@@ -1,194 +1,203 @@
 #!/bin/bash
 
-#################
-# Change this values
-#################
-#uncomment to debug
+set +e
 
-psqluser="canvus"   # Database username
-psqlpass="multimulti"  # Database password
-psqldb="canvusdb"   # Database name
-canvuskey="aaaa-bbbb-cccc-dddd" # Canvus testing activation key
-canvusadmin="admin@admin.com" # Canvus dashboard admin email
-latestcanvusinstall="https://canvus-downloads.s3.amazonaws.com/packages/mt-canvus-server-3.0.0-build28929-Ubuntu-18.04-amd64.sh" #link to the latest version of the canvus server install .sh
-domain="example.com"  #external domain name for ssl cert and server functions
+#### Pre-Config Option - Change these if you plan to run this unsupervised - we recommend supervised installs. ####
+ADMIN_EMAIL="admin@local.local"  # Update this to your email address if you want a live admin account rather than a local-only admin.
+ADMIN_PASSWORD_DEFAULT="Taction123!"  # Update this if you want a specific admin password, or change it after the first login.
+FQDN_DEFAULT=""  # Update this if you want to get Let's Encrypt auto-renewal SSL certs and configure them for use with this server.
+LETS_ENCRYPT_EMAIL="mt-canvus-server-setup-script@multitaction.com"  # This allows us to track what servers have been deployed with this script.  Feel free to change this if you like, however it must be a valid email address to work.
+ACTIVATION_KEY_DEFAULT="xxxx-xxxx-xxxx-xxxx"  # Update this if you have a specific activation key. If not the server won't activate but all the other steps will still work.
 
+# Update package lists and install curl and gnupg in one go to reduce updates
+apt-get update
+apt-get install -y curl gnupg postgresql
 
+# Add MultiTaction repository if not already added
+REPO_FILE="/etc/apt/sources.list.d/mt-software-stable.list"
+REPO_LINE="deb http://update.multitouch.fi/aptly/bionic multitaction stable"
 
-#################################################
-#                                               #
-#    PLEASE DO NOT CHANGE THE FOLLOWING CODE    #
-#                                               #
-#################################################
-certificates="$HOME/MultiTaction/canvus/server/certificates/LetsEncrypt"
-cert="$HOME/MultiTaction/canvus/server/certificates/LetsEncrypt/live/$domain/cert.pem"
-key="$HOME/MultiTaction/canvus/server/certificates/LetsEncrypt/live/$domain/privkey.pem"
-chain="$HOME/MultiTaction/canvus/server/certificates/LetsEncrypt/live/$domain/fullchain.pem"
+if ! grep -Fxq "$REPO_LINE" "$REPO_FILE"; then
+  echo "$REPO_LINE" >> "$REPO_FILE"
+  # Add the GPG key only if the repository was added
+  if ! apt-key list | grep -q "MultiTouch Ltd"; then
+    curl -s http://update.multitouch.fi/apt.key | apt-key add -
+  fi
+  # Update package lists after adding the repository
+  apt-get update
+fi
 
+# Install mt-canvus-server3
+apt-get install -y mt-canvus-server3
 
-#################
-# Dependicies
-#################
-sudo apt-get update
-sudo apt-get install postgresql-10 -y
-sudo snap install --classic certbot
+# Configure the database for mt-canvus-server3
+/opt/mt-canvus-server/bin/mt-canvus-server --configure-db
 
-#################
-# LetsEncrypt Certs
-#################
+# Verify that the database configuration was successful
+INI_FILE="/etc/MultiTaction/canvus/mt-canvus-server.ini"
+if grep -q "databasename=" "$INI_FILE"; then
+  echo "Database configuration successful."
+else
+  echo "Error: Database configuration failed." >&2
+  echo "Continuing despite error."
+fi
 
-# Create LetsEncrypt paths
-sudo certbot install
+# Enable and start mt-canvus-server and mt-canvus-dashboard services
+systemctl enable mt-canvus-server.service mt-canvus-dashboard.service
+systemctl start mt-canvus-server.service mt-canvus-dashboard.service
 
-# Configure LetsEncrypt Certbot to stop Canvus Server + Dashboard before renewing certs to release port 80.
-sudo sh -c 'printf "#!/bin/sh\nservice mt-canvus-server stop\n" > /etc/letsencrypt/renewal-hooks/pre/mt-canvus-server.sh'
-sudo chmod 755 /etc/letsencrypt/renewal-hooks/pre/mt-canvus-server.sh
-sudo sh -c 'printf "#!/bin/sh\nservice mt-canvus-dashboard stop\n" > /etc/letsencrypt/renewal-hooks/pre/mt-canvus-dashboard.sh'
-sudo chmod 755 /etc/letsencrypt/renewal-hooks/pre/mt-canvus-dashboard.sh
+# Wait a short while to ensure services are up before proceeding
+sleep 5
 
-# Depreciated I found a better way to do this using the LetsEncryt config file
-# # Configure LetsEncrypt Certbot to deploy the certificates Canvus Readable Location.
-# sudo domain=$domain sh -c 'printf "#!/bin/sh\n 
-# echo "Letsencrypt deploy hook running..."\n
-# echo "RENEWED_DOMAINS=$RENEWED_DOMAINS"\n
-# echo "RENEWED_LINEAGE=$RENEWED_LINEAGE"\n
-# if grep --quiet "$domain" <<< "$RENEWED_DOMAINS"; then\n
-  # > /etc/MultiTaction/canvus/server/certificates/LetsEncrypt/$domain.cert.pem\n
-  # > /etc/MultiTaction/canvus/server/certificates/LetsEncrypt/$domain.key.pem\n
-  # > /etc/MultiTaction/canvus/server/certificates/LetsEncrypt/$domain.fullchain.pem\n
-  # cat $RENEWED_LINEAGE/cert.pem > /etc/MultiTaction/canvus/server/certificates/LetsEncrypt/$domain.cert.pem\n
-  # cat $RENEWED_LINEAGE/privkey.pem > /etc/MultiTaction/canvus/server/certificates/LetsEncrypt/$domain.key.pem\n
-  # cat $RENEWED_LINEAGE/fullchain.pem > /etc/MultiTaction/canvus/server/certificates/LetsEncrypt/$domain.fullchain.pem\n
-  # echo "Canvus cert, key and fullchain updated and postfix restarted"\n
-# fi" > /etc/letsencrypt/renewal-hooks/deploy/mt-canvus-server.sh'
-# sudo chmod 755 /etc/letsencrypt/renewal-hooks/deploy/mt-canvus-server.sh
+# Verify that the services are running
+for service in mt-canvus-server mt-canvus-dashboard; do
+  if systemctl is-active --quiet "$service"; then
+    echo "$service is successfully running."
+  else
+    echo "Error: $service service failed to start." >&2
+    exit 1
+  fi
+done
 
-# Configure LetsEncrypt Certbot to start Canvus Server + Dashboard after renewing.
-sudo sh -c 'printf "#!/bin/sh\nservice mt-canvus-server start\n" > /etc/letsencrypt/renewal-hooks/post/mt-canvus-server.sh'
-sudo chmod 755 /etc/letsencrypt/renewal-hooks/post/mt-canvus-server.sh
-sudo sh -c 'printf "#!/bin/sh\nservice mt-canvus-dashboard start\n" > /etc/letsencrypt/renewal-hooks/post/mt-canvus-dashboard.sh'
-sudo chmod 755 /etc/letsencrypt/renewal-hooks/post/mt-canvus-dashboard.sh
+# Prompt for admin password with timeout and verification
+while true; do
+  ADMIN_PASSWORD=${ADMIN_PASSWORD_DEFAULT}
+  echo "You have 15 seconds to enter your desired admin password (min 8 characters, min 1 number, min 1 special character) [default: $ADMIN_PASSWORD_DEFAULT]: "
+  read -t 15 -r USER_PASSWORD_INPUT
+  ADMIN_PASSWORD=${USER_PASSWORD_INPUT:-$ADMIN_PASSWORD}
 
-echo "======= Pre, Deploy and Post Cert Scripts in place ======="
-echo "ls /etc/letsencrypt/renewal-hooks/pre/=" 
-ls /etc/letsencrypt/renewal-hooks/pre/
-echo "ls /etc/letsencrypt/renewal-hooks/deploy/=" 
-ls /etc/letsencrypt/renewal-hooks/deploy/
-echo "ls /etc/letsencrypt/renewal-hooks/post/=" 
-ls /etc/letsencrypt/renewal-hooks/post/
+  # Prompt for verification only if a custom password is entered
+  if [ "$ADMIN_PASSWORD" != "$ADMIN_PASSWORD_DEFAULT" ]; then
+    read -p "Please re-enter your admin password for verification: " ADMIN_PASSWORD_VERIFY
+    echo
+    if [ "$ADMIN_PASSWORD" = "$ADMIN_PASSWORD_VERIFY" ]; then
+      break
+    else
+      echo "Passwords do not match. Please try again."
+    fi
+  else
+    break
+  fi
+done
 
-#Get The Certs!
-sudo certbot certonly --noninteractive --agree-tos --cert-name $domain -d $domain --register-unsafely-without-email --standalone
+# Prompt for activation key with timeout
+echo "You have 15 seconds to enter your activation key (4 sets of 4 characters separated by a dash) [default: $ACTIVATION_KEY_DEFAULT]: "
+read -t 15 -r USER_ACTIVATION_KEY_INPUT
+ACTIVATION_KEY=${USER_ACTIVATION_KEY_INPUT:-$ACTIVATION_KEY_DEFAULT}
 
-#set -x
-#trap read debug
+# Create a default admin user
+/opt/mt-canvus-server/bin/mt-canvus-server --create-admin "$ADMIN_EMAIL" "$ADMIN_PASSWORD" || echo "Warning: Admin user creation failed, continuing..."
 
-# Mv the Certs to Canvus Folder and patch the config file so renewals work.
-mkdir -p "$certificates"/archive/
-echo "========= Canvus Archive Certs Folder Created =============="
-sudo mv /etc/letsencrypt/archive/$domain "$certificates"/archive
-echo "========= Canvus Certs moved from LetsEncrypt folder =============="
-ls +R "$certificates"/archive/
-sudo sed -i "s,/etc/letsencrypt/archive/$domain,$certificates/archive/$domain," /etc/letsencrypt/renewal/$domain.conf
-echo "========= New Canvus Specific Archive Cert Location added to LetEncrypt Renewal Scripts =============="
-cat /etc/letsencrypt/renewal/$domain.conf
-echo "======================="
-mkdir -p "$certificates"/live/
-echo "========= Canvus Live Certs Folder Created =============="
-sudo mv /etc/letsencrypt/live/$domain/ "$certificates"/live/$domain/
-echo "========= Canvus Live Certs moved from LetsEncrypt folder =============="
-sudo sed -i "s,/etc/letsencrypt/live/$domain,$certificates/live/$domain," /etc/letsencrypt/renewal/$domain.conf
-echo "========= New Canvus Specific Live Cert Location added to LetEncrypt Renewal Scripts =============="
-cat /etc/letsencrypt/renewal/$domain.conf
-echo "======================="
-sudo chmod -R 0777 "$certificates"/
-ls -l -R $certificates
-sudo certbot update_symlinks
+# Activate the software
+/opt/mt-canvus-server/bin/mt-canvus-server --activate "$ACTIVATION_KEY" || echo "Warning: Activation failed, continuing..."
 
-#################
-# Database
-#################
-sudo printf "CREATE USER $psqluser WITH PASSWORD '$psqlpass';\nCREATE DATABASE $psqldb WITH OWNER $psqluser;\nGRANT ALL ON DATABASE $psqldb TO $psqluser" > /tmp/jaypaul.sql
+# Get public IP address and prompt for DNS confirmation
+PUBLIC_IP=$(curl -s ifconfig.me)
+echo "This is the public IP of this server: $PUBLIC_IP"
+echo "Please ensure your domain DNS settings are pointing to this IP and have propagated before proceeding!"
+read -p "Press Enter to continue once DNS settings have propagated."
 
-sudo -u postgres psql -f /tmp/jaypaul.sql
+# Prompt for fully qualified domain name (FQDN) with timeout
+FQDN=${FQDN_DEFAULT}
+echo "You have 15 seconds to enter the fully qualified domain name (FQDN) for this server (enter or wait to skip SSL cert setup): [default: $FQDN_DEFAULT]"
+read -t 15 -r USER_FQDN_INPUT
+FQDN=${USER_FQDN_INPUT:-$FQDN}
+if [ -z "$FQDN" ]; then
+  echo "No FQDN entered, skipping SSL setup."
+  exit 0
+fi
 
-# sudo -u postgres psql -c "grant all on database $psqldb to $psqluser;"
-echo "=========================================="
-echo "Finished Database section"
+# Verify that the FQDN resolves to the public IP
+while true; do
+  RESOLVED_IP=$(dig +short "$FQDN")
+  if [ "$RESOLVED_IP" = "$PUBLIC_IP" ]; then
+    echo "FQDN '$FQDN' successfully resolves to the correct IP address: $RESOLVED_IP."
+    break
+  else
+    echo "FQDN '$FQDN' failed to resolve to this server. Please re-enter FQDN or press enter to retry: (the same FQDN will be used again if you wait 15 seconds.)"
+    read -t 15 -r NEW_FQDN
+    FQDN=${NEW_FQDN:-$FQDN}
+  fi
+done
 
+# Stop mt-canvus-server and mt-canvus-dashboard services to ensure ini file is not locked
+systemctl stop mt-canvus-server.service mt-canvus-dashboard.service
 
-#################
-# Update Synch Commit
-#################
-sudo sed -i -e 's/#synchronous_commit = on/synchronous_commit = off/g' /etc/postgresql/10/main/postgresql.conf
-echo "Synch Commit Set to Off"
+# Obtain SSL certificates using Let's Encrypt certbot
+apt-get install -y certbot
+certbot certonly --standalone -d "$FQDN" --agree-tos --non-interactive --email "$LETS_ENCRYPT_EMAIL" --no-eff-email
 
-#################
-# Install Canvus, Cp example ini, update INI with DB details.
-#################
+# Check if certificate was successfully obtained
+CERT_PATH="/etc/letsencrypt/live/$FQDN"
 
-wget $latestcanvusinstall -O /tmp/jaypaul-canvus-install.sh
-echo "=========================================="
-echo " Downloaded canvus install script"
+# Debugging info: print the CERT_PATH value
+echo "Checking for certificates at: $CERT_PATH"
 
-sudo sh /tmp/jaypaul-canvus-install.sh
-echo "=========================================="
-echo " Installed canvus"
+if [ -d "$CERT_PATH" ] && [ -f "$CERT_PATH/fullchain.pem" ] && [ -f "$CERT_PATH/privkey.pem" ]; then
+  echo "SSL certificate generation successful."
+else
+  echo "Error: SSL certificate generation failed. Exiting."
+  exit 1
+fi
 
-sudo cp /etc/MultiTaction/canvus/mt-canvus-server.ini.example /etc/MultiTaction/canvus/mt-canvus-server.ini
-echo "============== Example ini copied to live ini ====================="
-echo "ls /etc/MultiTaction/canvus/=" 
-ls -R /etc/MultiTaction/canvus/
+# Create certificate directory if it doesn't exist
+MT_CERT_PATH="/var/lib/mt-canvus-server/certs"
+mkdir -p "$MT_CERT_PATH"
 
-sudo sed -i.bak_url '/external-url=/a external-url=https://'$domain'  \n#added by install script' /etc/MultiTaction/canvus/mt-canvus-server.ini
-echo "=========================================="
-echo " Domain Details added to mt-canvus-server.ini"
+# Create a new group for certificate access and add mt-canvus-server user to it
+groupadd -f ssl-cert-access
+usermod -a -G ssl-cert-access mt-canvus-server
 
-sudo sed -i.bak_db '/\[sql\]/a databasename='$psqldb'\nusername='$psqluser'\npassword='$psqlpass'\n #added by install script' /etc/MultiTaction/canvus/mt-canvus-server.ini
-echo "=========================================="
-echo " SQL details added to mt-canvus-server.ini"
+# Change group ownership for Let's Encrypt directories and certificate files
+chgrp -R ssl-cert-access /etc/letsencrypt
+chmod -R g+rx /etc/letsencrypt
+chmod -R g+r /etc/letsencrypt/archive/$FQDN/*
 
-sudo sed -i.bak_cert '/certificate-file=/a certificate-file='$cert'  \n#added by install script' /etc/MultiTaction/canvus/mt-canvus-server.ini
-echo "=========================================="
-echo " Cert.pem added to mt-canvus-server.ini"
+# Create symbolic links for the certificates using absolute paths
 
-sudo sed -i.bak_key '/certificate-key-file=/a certificate-key-file='$key'  \n#added by install script' /etc/MultiTaction/canvus/mt-canvus-server.ini
-echo "=========================================="
-echo " privkey.pem added to mt-canvus-server.ini"
+# Debug: Print contents of the certificate path
+ls -l "$CERT_PATH"
 
-sudo sed -i.bak_chain '/certificate-chain-file=/a certificate-chain-file='$chain'  \n#added by install script' /etc/MultiTaction/canvus/mt-canvus-server.ini
-echo "=========================================="
-echo " chain.pem added to mt-canvus-server.ini"
+# Debug: Check for any existing certificates in the MT_CERT_PATH before creating symlinks
+ls -l "$MT_CERT_PATH"
+ln -sf "$CERT_PATH/fullchain.pem" "$MT_CERT_PATH/certificate.pem"
+echo "Created symlink: $MT_CERT_PATH/certificate.pem -> $CERT_PATH/fullchain.pem"
 
-/opt/mt-canvus-server/bin/LicenseTool --activate $canvuskey
+ln -sf "$CERT_PATH/privkey.pem" "$MT_CERT_PATH/certificate-key.pem"
+echo "Created symlink: $MT_CERT_PATH/certificate-key.pem -> $CERT_PATH/privkey.pem"
 
-sudo mkdir -p /etc/MultiTaction/Licenses/ && sudo cp ~/MultiTaction/Licenses/* /etc/MultiTaction/Licenses
-echo "=============License files copied to /etc/ location =================="
-echo "ls /etc/MultiTaction/Licenses/=" 
-ls /etc/MultiTaction/Licenses/
+ln -sf "$CERT_PATH/chain.pem" "$MT_CERT_PATH/certificate-chain.pem"
+echo "Created symlink: $MT_CERT_PATH/certificate-chain.pem -> $CERT_PATH/chain.pem"
 
-sudo systemctl start mt-canvus-server
-sudo systemctl start mt-canvus-dashboard
+# Update mt-canvus-server.ini with SSL configuration
+sed -i "s|^; external-url=.*|external-url=https://$FQDN|" "$INI_FILE"
+echo "Updated 'external-url' to 'https://$FQDN' in $INI_FILE"
 
-echo "==============Waiting for canvus server to become active ===================="
-sleep 10
-systemctl is-active mt-canvus-server && echo Canvus Server is running
+sed -i "s|^; ssl-enabled=.*|ssl-enabled=true|" "$INI_FILE"
+echo "Updated 'ssl-enabled' to 'true' in $INI_FILE"
 
+sed -i "s|^; certificate-file=.*|certificate-file=$MT_CERT_PATH/certificate.pem|" "$INI_FILE"
+echo "Updated 'certificate-file' to '$MT_CERT_PATH/certificate.pem' in $INI_FILE"
 
-touch canvus_server_admin_details.txt
-sudo /opt/mt-canvus-server/bin/mt-canvus-server --create-admin $canvusadmin >> canvus_server_admin_details.txt
-echo "Admin login details are saved in canvus_server_admin_details.txt"
-cat canvus_server_admin_details.txt
-echo | sudo /opt/mt-canvus-server/bin/mt-canvus-server --list-users
+sed -i "s|^; certificate-key-file=.*|certificate-key-file=$MT_CERT_PATH/certificate-key.pem|" "$INI_FILE"
+echo "Updated 'certificate-key-file' to '$MT_CERT_PATH/certificate-key.pem' in $INI_FILE"
 
-#################
-# Cleaning up
-#################
-echo "Cleaning"
-sudo rm -r /tmp/jaypaul*
+sed -i "s|^; certificate-chain-file=.*|certificate-chain-file=$MT_CERT_PATH/certificate-chain.pem|" "$INI_FILE"
+echo "Updated 'certificate-chain-file' to '$MT_CERT_PATH/certificate-chain.pem' in $INI_FILE"
 
-echo "Cleaned"
+# Set permissions to ensure mt-canvus-server can read the certificates
+chown -R mt-canvus-server:ssl-cert-access "$MT_CERT_PATH"
+chmod 640 "$MT_CERT_PATH"/*
 
-echo "End of the script"
+# Restart the mt-canvus-server service to apply group changes
+systemctl restart mt-canvus-server.service
 
-exit
+# Debug: Test reading the certificate files as mt-canvus-server user
+sudo -u mt-canvus-server cat "$MT_CERT_PATH/certificate.pem" && echo "Canvus server user can read certificate.pem" || echo "Error: Canvus server user cannot read certificate.pem"
+sudo -u mt-canvus-server cat "$MT_CERT_PATH/certificate-key.pem" && echo "Canvus server user can read certificate-key.pem" || echo "Error: Canvus server user cannot read certificate-key.pem"
+
+# Start mt-canvus-dashboard service again (already restarted server above)
+systemctl start mt-canvus-dashboard.service
+
+# Reload the SSL certs to verify that MT-Canvus-Server has access to them and all permissions have worked.
+/opt/mt-canvus-server/bin/mt-canvus-server --reload-certs
