@@ -13,7 +13,7 @@ sudo chmod +x CanvusServerInstaller_JP2021.sh
 
 nano CanvusServerInstaller_JP2021.sh
 
-adjust the variable at the top of the script to suite your needs then Ctrl+O to save and Ctrl+X to exit.
+adjust the variable at the top of the script to suit your needs then Ctrl+O to save and Ctrl+X to exit.
 Then run the script with
 
 ./CanvusServerInstaller_JP2021.sh
