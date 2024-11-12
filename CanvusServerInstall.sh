@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION=0.51
+VERSION=1
 
 set +e
 
@@ -88,7 +88,12 @@ done
 is_step_completed "Check if admin user exists" "/opt/mt-canvus-server/bin/mt-canvus-server --list-users | grep -q '$ADMIN_EMAIL'" && ADMIN_EXISTS=true || ADMIN_EXISTS=false
 
 # Check if activation key already exists
-is_step_completed "Check if activation key exists" "[ -f '/var/lib/mt-canvus-server/MultiTaction/Licenses/.cslicense' ]" && ACTIVATION_EXISTS=true || ACTIVATION_EXISTS=false
+if ls /var/lib/mt-canvus-server/MultiTaction/Licenses/*.cslicense &> /dev/null; then
+  echo "Activation key already exists, skipping activation."
+  ACTIVATION_EXISTS=true
+else
+  ACTIVATION_EXISTS=false
+fi
 
 # Prompt for admin password with timeout and verification
 if [ "$ADMIN_EXISTS" = false ]; then
@@ -126,25 +131,16 @@ if [ "$ACTIVATION_EXISTS" = false ]; then
 
   echo "Activating the software..."
 /opt/mt-canvus-server/bin/mt-canvus-server --activate "$ACTIVATION_KEY" || echo "Warning: Activation failed, continuing..."
-else
-  echo "Activation key already exists, skipping activation."
 fi
 
-# Check if SSL certificate already exists
-CERT_PATH="/etc/letsencrypt/live/$FQDN"
-if [ -d "$CERT_PATH" ] && [ -f "$CERT_PATH/fullchain.pem" ] && [ -f "$CERT_PATH/privkey.pem" ]; then
-  echo "SSL certificate already exists, skipping SSL acquisition steps."
-  # Debug: Test reading the certificate files as mt-canvus-server user
+# Check if SSL certificate already exists by verifying access to the certificate files
   MT_CERT_PATH="/var/lib/mt-canvus-server/certs"
-  sudo -u mt-canvus-server cat "$MT_CERT_PATH/certificate.pem" && echo "Canvus server user can read certificate.pem" || echo "Error: Canvus server user cannot read certificate.pem"
-  sudo -u mt-canvus-server cat "$MT_CERT_PATH/certificate-key.pem" && echo "Canvus server user can read certificate-key.pem" || echo "Error: Canvus server user cannot read certificate-key.pem"
   if sudo -u mt-canvus-server cat "$MT_CERT_PATH/certificate.pem" && sudo -u mt-canvus-server cat "$MT_CERT_PATH/certificate-key.pem"; then
     echo "Certificates are accessible. Skipping steps until restarting mt-canvus-server service."
-  else
-    echo "Certificates are not accessible as expected. Proceeding with SSL setup."
-  fi
+    sudo -u mt-canvus-server cat "$MT_CERT_PATH/certificate.pem" && echo "Canvus server user can read certificate.pem" || echo "Error: Canvus server user cannot read certificate.pem"
+    sudo -u mt-canvus-server cat "$MT_CERT_PATH/certificate-key.pem" && echo "Canvus server user can read certificate-key.pem" || echo "Error: Canvus server user cannot read certificate-key.pem"
 else
-  
+  echo "Certificates are not accessible as expected. Proceeding with SSL setup."
   # Stop services before SSL configuration
   echo "Stopping mt-canvus-server and mt-canvus-dashboard services before SSL configuration..."
   for service in mt-canvus-server mt-canvus-dashboard; do
@@ -277,5 +273,7 @@ echo "Starting mt-canvus-dashboard service again..."
 systemctl start mt-canvus-dashboard.service
 
 # Reload the SSL certs to verify that MT-Canvus-Server has access to them and all permissions have worked.
+echo "Waiting a short while for Canvus Server to be ready..."
+Sleep 5 
 echo "Reloading SSL certificates for mt-canvus-server..."
 /opt/mt-canvus-server/bin/mt-canvus-server --reload-certs
