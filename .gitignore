@@ -1,0 +1,25 @@
+# Cursor IDE specific files
+.cursor/
+.cursor/*
+
+# IDE specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
+sync.log
+
+# Backup directories
+backups/
+backups/*
+
+# Temporary files
+*.tmp
+*.temp 

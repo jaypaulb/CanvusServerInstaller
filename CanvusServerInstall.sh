@@ -17,6 +17,23 @@ if [[ "$FQDN_DEFAULT" =~ [A-Z] ]]; then
   FQDN_DEFAULT=$(echo "$FQDN_DEFAULT" | tr '[:upper:]' '[:lower:]')
 fi
 
+# Function to safely wait
+safe_sleep() {
+    local seconds=$1
+    if command -v sleep >/dev/null 2>&1; then
+        sleep "$seconds"
+    elif command -v timeout >/dev/null 2>&1; then
+        timeout "$seconds" /bin/true
+    else
+        echo "Warning: No sleep command found, waiting..."
+        for ((i=0; i<seconds; i++)); do
+            echo -n "."
+            read -t 1 -r
+        done
+        echo
+    fi
+}
+
 # Function to check if a step is already completed
 function is_step_completed() {
   local step_name="$1"
@@ -27,6 +44,38 @@ function is_step_completed() {
   else
     return 1
   fi
+}
+
+# Function to verify SSL certificate access
+function verify_ssl_cert_access() {
+    local cert_path="$1"
+    local user="$2"
+    
+    if [ -f "$cert_path/certificate.pem" ] && [ -f "$cert_path/certificate-key.pem" ]; then
+        if sudo -u "$user" cat "$cert_path/certificate.pem" >/dev/null 2>&1 && \
+           sudo -u "$user" cat "$cert_path/certificate-key.pem" >/dev/null 2>&1; then
+            echo "SSL certificates are accessible by $user"
+            return 0
+        else
+            echo "SSL certificates exist but are not accessible by $user"
+            return 1
+        fi
+    else
+        echo "SSL certificates do not exist at $cert_path"
+        return 1
+    fi
+}
+
+# Function to verify service status
+function verify_service_status() {
+    local service="$1"
+    if systemctl is-active --quiet "$service"; then
+        echo "$service is running"
+        return 0
+    else
+        echo "$service is not running"
+        return 1
+    fi
 }
 
 # Update package lists and install curl and gnupg in one go to reduce updates
@@ -273,7 +322,41 @@ echo "Starting mt-canvus-dashboard service again..."
 systemctl start mt-canvus-dashboard.service
 
 # Reload the SSL certs to verify that MT-Canvus-Server has access to them and all permissions have worked.
-echo "Waiting a short while for Canvus Server to be ready..."
-Sleep 5 
-echo "Reloading SSL certificates for mt-canvus-server..."
-/opt/mt-canvus-server/bin/mt-canvus-server --reload-certs
+echo "Waiting for Canvus Server to be ready..."
+safe_sleep 5
+
+echo "Verifying service status before reloading certificates..."
+if ! verify_service_status "mt-canvus-server"; then
+    echo "Starting mt-canvus-server service..."
+    systemctl start mt-canvus-server
+    safe_sleep 5
+fi
+
+echo "Verifying SSL certificate access..."
+MT_CERT_PATH="/var/lib/mt-canvus-server/certs"
+if verify_ssl_cert_access "$MT_CERT_PATH" "mt-canvus-server"; then
+    echo "Reloading SSL certificates for mt-canvus-server..."
+    if /opt/mt-canvus-server/bin/mt-canvus-server --reload-certs; then
+        echo "SSL certificates reloaded successfully"
+    else
+        echo "Warning: SSL certificate reload failed, but continuing..."
+        echo "Please check the server logs for more details"
+    fi
+else
+    echo "Error: Cannot access SSL certificates. Please check permissions and file existence."
+    echo "Certificate path: $MT_CERT_PATH"
+    ls -l "$MT_CERT_PATH"
+    exit 1
+fi
+
+# Verify final service status
+echo "Verifying final service status..."
+for service in mt-canvus-server mt-canvus-dashboard; do
+    if verify_service_status "$service"; then
+        echo "$service is running successfully"
+    else
+        echo "Warning: $service is not running. Please check the service status manually."
+    fi
+done
+
+echo "Installation completed. Please check the server logs for any warnings or errors."
