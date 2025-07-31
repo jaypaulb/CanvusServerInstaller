@@ -11,6 +11,11 @@ FQDN_DEFAULT=""  # Update this if you want to get Let's Encrypt auto-renewal SSL
 LETS_ENCRYPT_EMAIL="mt-canvus-server-setup-script@multitaction.com"  # This allows us to track what servers have been deployed with this script.  Feel free to change this if you like, however it must be a valid email address to work.
 ACTIVATION_KEY_DEFAULT="xxxx-xxxx-xxxx-xxxx"  # Update this if you have a specific activation key. If not the server won't activate but all the other steps will still work.
 
+# Custom SSL Certificate Paths (leave empty to use Let's Encrypt)
+CUSTOM_CERT_PATH=""  # Path to your existing certificate file (e.g., "/path/to/certificate.pem")
+CUSTOM_KEY_PATH=""   # Path to your existing private key file (e.g., "/path/to/private-key.pem")
+CUSTOM_CHAIN_PATH="" # Path to your existing certificate chain file (optional, e.g., "/path/to/chain.pem")
+
 # Check if FQDN is all lowercase
 if [[ "$FQDN_DEFAULT" =~ [A-Z] ]]; then
   echo "FQDN contains uppercase characters, converting to lowercase..."
@@ -182,14 +187,77 @@ if [ "$ACTIVATION_EXISTS" = false ]; then
 /opt/mt-canvus-server/bin/mt-canvus-server --activate "$ACTIVATION_KEY" || echo "Warning: Activation failed, continuing..."
 fi
 
-# Check if SSL certificate already exists by verifying access to the certificate files
+# Check if custom certificates are provided
+if [ -n "$CUSTOM_CERT_PATH" ] && [ -n "$CUSTOM_KEY_PATH" ]; then
+  echo "Using custom SSL certificates..."
+  
+  # Validate custom certificate files
+  if [ ! -f "$CUSTOM_CERT_PATH" ]; then
+    echo "Error: Custom certificate file not found: $CUSTOM_CERT_PATH"
+    exit 1
+  fi
+  if [ ! -f "$CUSTOM_KEY_PATH" ]; then
+    echo "Error: Custom key file not found: $CUSTOM_KEY_PATH"
+    exit 1
+  fi
+  if [ -n "$CUSTOM_CHAIN_PATH" ] && [ ! -f "$CUSTOM_CHAIN_PATH" ]; then
+    echo "Error: Custom chain file not found: $CUSTOM_CHAIN_PATH"
+    exit 1
+  fi
+  
+  # Create certificate directory if it doesn't exist
   MT_CERT_PATH="/var/lib/mt-canvus-server/certs"
-  if sudo -u mt-canvus-server cat "$MT_CERT_PATH/certificate.pem" && sudo -u mt-canvus-server cat "$MT_CERT_PATH/certificate-key.pem"; then
-    echo "Certificates are accessible. Skipping steps until restarting mt-canvus-server service."
-    sudo -u mt-canvus-server cat "$MT_CERT_PATH/certificate.pem" && echo "Canvus server user can read certificate.pem" || echo "Error: Canvus server user cannot read certificate.pem"
-    sudo -u mt-canvus-server cat "$MT_CERT_PATH/certificate-key.pem" && echo "Canvus server user can read certificate-key.pem" || echo "Error: Canvus server user cannot read certificate-key.pem"
+  mkdir -p "$MT_CERT_PATH"
+  
+  # Copy custom certificates to MT Canvus Server location
+  echo "Copying custom certificates..."
+  cp "$CUSTOM_CERT_PATH" "$MT_CERT_PATH/certificate.pem"
+  cp "$CUSTOM_KEY_PATH" "$MT_CERT_PATH/certificate-key.pem"
+  if [ -n "$CUSTOM_CHAIN_PATH" ]; then
+    cp "$CUSTOM_CHAIN_PATH" "$MT_CERT_PATH/certificate-chain.pem"
+  fi
+  
+  echo "Custom certificates copied successfully"
+  
+  # Update mt-canvus-server.ini with SSL configuration
+  echo "Updating mt-canvus-server.ini with SSL configuration..."
+  # Use FQDN if provided, otherwise use localhost
+  if [ -n "$FQDN_DEFAULT" ]; then
+    EXTERNAL_URL="https://$FQDN_DEFAULT"
+  else
+    EXTERNAL_URL="https://localhost"
+  fi
+  
+  sed -i "s|^; external-url=.*|external-url=$EXTERNAL_URL|" "$INI_FILE"
+  echo "Updated 'external-url' to '$EXTERNAL_URL' in $INI_FILE"
+  
+  sed -i "s|^; ssl-enabled=.*|ssl-enabled=true|" "$INI_FILE"
+  echo "Updated 'ssl-enabled' to 'true' in $INI_FILE"
+  
+  sed -i "s|^; certificate-file=.*|certificate-file=$MT_CERT_PATH/certificate.pem|" "$INI_FILE"
+  echo "Updated 'certificate-file' to '$MT_CERT_PATH/certificate.pem' in $INI_FILE"
+  
+  sed -i "s|^; certificate-key-file=.*|certificate-key-file=$MT_CERT_PATH/certificate-key.pem|" "$INI_FILE"
+  echo "Updated 'certificate-key-file' to '$MT_CERT_PATH/certificate-key.pem' in $INI_FILE"
+  
+  if [ -n "$CUSTOM_CHAIN_PATH" ]; then
+    sed -i "s|^; certificate-chain-file=.*|certificate-chain-file=$MT_CERT_PATH/certificate-chain.pem|" "$INI_FILE"
+    echo "Updated 'certificate-chain-file' to '$MT_CERT_PATH/certificate-chain.pem' in $INI_FILE"
+  fi
+  
+  # Set permissions to ensure mt-canvus-server can read the certificates
+  echo "Setting permissions to ensure mt-canvus-server can read the certificates..."
+  chown -R mt-canvus-server:ssl-cert-access "$MT_CERT_PATH"
+  chmod 640 "$MT_CERT_PATH"/*
+  
+  echo "Custom SSL setup completed successfully"
+  
+elif sudo -u mt-canvus-server cat "$MT_CERT_PATH/certificate.pem" && sudo -u mt-canvus-server cat "$MT_CERT_PATH/certificate-key.pem"; then
+  echo "Certificates are accessible. Skipping steps until restarting mt-canvus-server service."
+  sudo -u mt-canvus-server cat "$MT_CERT_PATH/certificate.pem" && echo "Canvus server user can read certificate.pem" || echo "Error: Canvus server user cannot read certificate.pem"
+  sudo -u mt-canvus-server cat "$MT_CERT_PATH/certificate-key.pem" && echo "Canvus server user can read certificate-key.pem" || echo "Error: Canvus server user cannot read certificate-key.pem"
 else
-  echo "Certificates are not accessible as expected. Proceeding with SSL setup."
+  echo "Certificates are not accessible as expected. Proceeding with Let's Encrypt SSL setup."
   # Stop services before SSL configuration
   echo "Stopping mt-canvus-server and mt-canvus-dashboard services before SSL configuration..."
   for service in mt-canvus-server mt-canvus-dashboard; do

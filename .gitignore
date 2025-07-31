@@ -23,3 +23,5 @@ backups/*
 # Temporary files
 *.tmp
 *.temp 
+
+*.secrets
